@@ -229,6 +229,20 @@ export const useCleanupStore = create(immer((set, get) => ({
     });
   },
 
+  markBuildRequested(message = 'Starting vector index build') {
+    set((state) => {
+      const total = Math.max(Number(state.embeddings.total || 0), Number(state.status.activeRows || 0));
+      state.embeddings.status = 'indexing';
+      state.embeddings.phase = 'queued';
+      state.embeddings.total = total;
+      state.embeddings.phaseDone = state.embeddings.indexed;
+      state.embeddings.phaseTotal = total;
+      state.embeddings.message = message;
+      state.search.error = '';
+      if (state.search.status === 'error') state.search.status = 'idle';
+    });
+  },
+
   setSearchText(textQuery) {
     set((state) => {
       state.search.textQuery = textQuery;
@@ -551,6 +565,11 @@ export const useCleanupStore = create(immer((set, get) => ({
         state.embeddings.cachePurges = message.cachePurges ?? state.embeddings.cachePurges;
         state.embeddings.message = message.message ?? `Configured ${state.embeddings.total.toLocaleString()} rows`;
         state.search.message = `Configured ${state.embeddings.total.toLocaleString()} rows`;
+        state.search.error = '';
+        if (state.search.status === 'error') state.search.status = 'idle';
+        if (state.embeddings.total > 0 && state.embeddings.indexed >= state.embeddings.total) {
+          state.embeddings.modelProgress = 100;
+        }
         return;
       }
       if (message.type === 'status') {
@@ -574,6 +593,13 @@ export const useCleanupStore = create(immer((set, get) => ({
         state.embeddings.cacheHits = message.cacheHits ?? state.embeddings.cacheHits;
         state.embeddings.cacheWrites = message.cacheWrites ?? state.embeddings.cacheWrites;
         state.embeddings.cachePurges = message.cachePurges ?? state.embeddings.cachePurges;
+        if ((message.status ?? state.embeddings.status) !== 'error') {
+          state.search.error = '';
+          if (state.search.status === 'error') state.search.status = 'idle';
+        }
+        if (state.embeddings.total > 0 && state.embeddings.indexed >= state.embeddings.total) {
+          state.embeddings.modelProgress = 100;
+        }
         return;
       }
       if (message.type === 'results') {

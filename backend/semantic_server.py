@@ -38,7 +38,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sentence_transformers import SentenceTransformer
 
 MODEL_ID = os.environ.get("SEMANTIC_MODEL", "intfloat/multilingual-e5-large-instruct")
-CACHE_DIR = Path(os.environ.get("SEMANTIC_CACHE_DIR", ".semantic-cache")).resolve()
+DEFAULT_CACHE_DIR = Path(__file__).resolve().parent.parent / ".semantic-cache"
+CACHE_DIR = Path(os.environ.get("SEMANTIC_CACHE_DIR", str(DEFAULT_CACHE_DIR))).resolve()
 HOST = os.environ.get("SEMANTIC_HOST", "127.0.0.1")
 PORT = int(os.environ.get("SEMANTIC_PORT", "8765"))
 BATCH_SIZE = int(os.environ.get("SEMANTIC_BATCH_SIZE", "64"))
@@ -102,6 +103,7 @@ class SemanticState:
         self.cache_purges = 0
         self.error = ""
         self.build_thread: threading.Thread | None = None
+        self.model_load_lock = threading.Lock()
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
     @property
@@ -250,7 +252,6 @@ class SemanticState:
     def _build_worker(self) -> None:
         """Embed missing rows in batches, persist cache, then rebuild FAISS."""
         try:
-            self._ensure_model()
             while True:
                 with self.lock:
                     pending = [
@@ -267,9 +268,28 @@ class SemanticState:
                         self.phase_total = len(self.docs)
                         self.message = f"Vector index ready with {self.phase_done:,} rows"
                         return
+                    self.status = "loading" if self.model is None else "indexing"
+                    self.phase = "loading" if self.model is None else "embed"
+                    self.phase_done = 0
+                    self.message = (
+                        f"Loading {MODEL_ID} on {self.device.upper()}"
+                        if self.model is None
+                        else f"Embedding {len(pending):,} changed rows on {self.device.upper()}"
+                    )
+
+                self._ensure_model()
+
+                with self.lock:
+                    pending = [
+                        doc for row_id, doc in self.docs.items()
+                        if row_id not in self.vectors or self.vector_fingerprints.get(row_id) != doc.get("fingerprint")
+                    ]
+                    if not pending:
+                        continue
                     self.status = "indexing"
                     self.phase = "embed"
                     self.phase_done = 0
+                    self.phase_total = len(pending)
                     self.message = f"Embedding {len(pending):,} changed rows on {self.device.upper()}"
 
                 for start in range(0, len(pending), BATCH_SIZE):
@@ -301,22 +321,23 @@ class SemanticState:
 
     def _ensure_model(self) -> None:
         """Load SentenceTransformers once; MPS/CUDA choice is made at startup."""
-        with self.lock:
-            if self.model is not None:
-                return
-            self.status = "loading"
-            self.phase = "loading"
-            self.phase_done = 0
-            self.phase_total = 100
-            self.model_progress = 0
-            self.message = f"Loading {MODEL_ID} on {self.device.upper()}"
-        print(f"[semantic] loading {MODEL_ID} on {self.device.upper()}", flush=True)
-        model = SentenceTransformer(MODEL_ID, device=self.device)
-        model.max_seq_length = MAX_SEQ_LENGTH
-        with self.lock:
-            self.model = model
-            self.model_progress = 100
-            self.message = f"Loaded {MODEL_ID} on {self.device.upper()}"
+        with self.model_load_lock:
+            with self.lock:
+                if self.model is not None:
+                    return
+                self.status = "loading"
+                self.phase = "loading"
+                self.phase_done = 0
+                self.phase_total = 100
+                self.model_progress = 0
+                self.message = f"Loading {MODEL_ID} on {self.device.upper()}"
+            print(f"[semantic] loading {MODEL_ID} on {self.device.upper()}", flush=True)
+            model = SentenceTransformer(MODEL_ID, device=self.device)
+            model.max_seq_length = MAX_SEQ_LENGTH
+            with self.lock:
+                self.model = model
+                self.model_progress = 100
+                self.message = f"Loaded {MODEL_ID} on {self.device.upper()}"
 
     def _embed_documents(self, texts: list[str]) -> np.ndarray:
         """Encode dataset rows with document-side E5 instructions."""

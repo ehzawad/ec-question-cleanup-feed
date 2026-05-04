@@ -59,6 +59,8 @@ The backend uses:
 
 The Python backend is mandatory. The previous Transformers.js browser fallback was removed because loading E5-large inside Chrome could create duplicate model instances and severe memory pressure on long cleanup sessions.
 
+The frontend owns backend reconnection. If the user opens the page before `npm run semantic:server`, the UI shows a backend error, polls `/health`, and then reruns the CSV-to-backend configure/reuse handshake after the backend is reachable. A `ready 0 / 0` backend response is not treated as a complete index when the frontend has loaded rows.
+
 ## Build Vector Index Flow
 
 1. Start Vite:
@@ -74,8 +76,8 @@ The Python backend is mandatory. The previous Transformers.js browser fallback w
    ```
 
 3. Open `http://localhost:5174/`.
-4. Wait for the UI to show the backend connection and row count.
-5. Click **Build vector index**.
+4. Wait for the UI to show the backend connection and row count. If the backend was started late, the UI should recover without a browser refresh.
+5. Click **Build vector index** if vectors are incomplete.
 6. Watch `indexed / total` increase.
 7. Search and row-click Top-10 become enabled only at `62,978 / 62,978`.
 
@@ -113,6 +115,8 @@ Important slices:
 
 The bridge in `src/workerBridge.js` talks only to the Python backend. If the backend is not available, semantic build/search actions show an error instead of starting a browser model.
 
+The backend build worker checks for missing or stale row vectors before loading E5. A fully cached index can move back to `ready` without instantiating another model. Model loading is also guarded by a lock so concurrent requests do not create duplicate SentenceTransformer instances in one backend process.
+
 ## Verification Checklist
 
 Before committing:
@@ -120,7 +124,8 @@ Before committing:
 - `npm run build`
 - `uv run --python 3.13 python -m py_compile backend/semantic_server.py`
 - Open the app in a browser and confirm the feed renders.
-- Click **Build vector index** and confirm backend `/status` moves into `indexing`.
+- Load the page while `/health` is unavailable, then restore backend access and confirm the UI recovers to the cached vector count.
+- Click **Build vector index** when vectors are incomplete and confirm backend `/status` moves into `indexing`.
 - After the full vector index is ready, verify:
   - Text search returns 10 rows with scores.
   - Clicking a row returns 10 similar rows with scores.

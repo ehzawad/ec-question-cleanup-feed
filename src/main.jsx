@@ -23,6 +23,7 @@ import {
 function App() {
   const parentRef = useRef(null);
   const searchInputRef = useRef(null);
+  const semanticConfigureRef = useRef({ inFlight: false, key: '' });
   const [pendingScrollRowId, setPendingScrollRowId] = useState(null);
   const [pendingSemanticRefresh, setPendingSemanticRefresh] = useState(null);
   const [queryDraft, setQueryDraft] = useState('');
@@ -68,6 +69,7 @@ function App() {
   const restoreSnapshot = useCleanupStore((state) => state.restoreSnapshot);
   const markExported = useCleanupStore((state) => state.markExported);
   const markSemanticSyncPending = useCleanupStore((state) => state.markSemanticSyncPending);
+  const markBuildRequested = useCleanupStore((state) => state.markBuildRequested);
 
   useEffect(() => {
     let mounted = true;
@@ -97,19 +99,7 @@ function App() {
       finishHydrate(event.data.hash).then(() => {
         if (!mounted) return;
         setBootMessage('');
-        const state = useCleanupStore.getState();
-        tryReuseBackendIndex(state.status.activeRows, state.workerRunId()).then((reused) => {
-          if (!mounted || reused) return;
-          isBackendAvailable().then((available) => {
-            if (!mounted) return;
-            if (!available) {
-              useCleanupStore.getState().setWorkerError('Start the Python semantic backend with npm run semantic:server.');
-              return;
-            }
-            const nextState = useCleanupStore.getState();
-            postConfigure(nextState.getActiveDocs(), nextState.workerRunId(), nextState.status.activeRows);
-          });
-        });
+        ensureSemanticBackendConfigured('csv-hydrate');
       });
     };
     csvWorker.onerror = (event) => {
@@ -142,6 +132,18 @@ function App() {
   useEffect(() => {
     setQueryDraft(search.textQuery);
   }, [search.textQuery]);
+
+  useEffect(() => {
+    if (status.boot !== 'ready' || !status.activeRows) return;
+    const backendMatchesRows = (
+      Number(embeddings.total || 0) === Number(status.activeRows || 0)
+      && embeddings.status !== 'idle'
+      && !search.error
+    );
+    if (backendMatchesRows) return;
+    semanticConfigureRef.current.key = '';
+    ensureSemanticBackendConfigured('backend-reconnect');
+  }, [embeddings.status, embeddings.total, search.error, status.activeRows, status.boot]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -311,6 +313,8 @@ function App() {
   }
 
   function handleBuildIndex() {
+    markBuildRequested();
+    semanticConfigureRef.current.key = '';
     isBackendAvailable().then((available) => {
       if (!available) {
         useCleanupStore.getState().setWorkerError('Start the Python semantic backend with npm run semantic:server.');
@@ -320,6 +324,38 @@ function App() {
       postConfigure(state.getActiveDocs(), state.workerRunId(), state.status.activeRows);
       postBuildIndex(state.workerRunId());
     });
+  }
+
+  function ensureSemanticBackendConfigured(reason = 'auto') {
+    const state = useCleanupStore.getState();
+    if (state.status.boot !== 'ready' || !state.status.activeRows) return;
+    const key = `${state.baseHash || 'dataset'}:${state.workerRunId()}`;
+    if (semanticConfigureRef.current.inFlight || semanticConfigureRef.current.key === key) return;
+
+    semanticConfigureRef.current.inFlight = true;
+    isBackendAvailable()
+      .then((available) => {
+        if (!available) {
+          useCleanupStore.getState().setWorkerError('Start the Python semantic backend with npm run semantic:server.');
+          return false;
+        }
+        const current = useCleanupStore.getState();
+        return tryReuseBackendIndex(current.status.activeRows, current.workerRunId())
+          .then((reused) => {
+            if (!reused) {
+              const nextState = useCleanupStore.getState();
+              postConfigure(nextState.getActiveDocs(), nextState.workerRunId(), nextState.status.activeRows);
+            }
+            semanticConfigureRef.current.key = key;
+            return true;
+          });
+      })
+      .catch((error) => {
+        useCleanupStore.getState().setWorkerError(error?.message || 'Semantic backend failed while configuring rows.');
+      })
+      .finally(() => {
+        semanticConfigureRef.current.inFlight = false;
+      });
   }
 
   function exportCleanCsv() {
@@ -594,6 +630,14 @@ function ProgressLines({ indexInfo, compact = false }) {
 function TopResultsDock({ search, rowsById, embeddings, activeRows, onBuildIndex, onSelectResult, onRemove }) {
   const indexInfo = semanticIndexInfo(embeddings, activeRows);
   const isReady = indexInfo.ready;
+  const buildBusy = !isReady && ['indexing', 'loading'].includes(embeddings.status);
+  const buildLabel = buildBusy
+    ? embeddings.phase === 'loading'
+      ? 'Loading E5 model'
+      : 'Building vector index'
+    : indexInfo.indexed
+      ? 'Resume vector index'
+      : 'Build vector index';
   const activeQuery = search.mode === 'text' && search.textQuery.trim();
   const hasIntent = Boolean(activeQuery);
   const results = search.results
@@ -633,7 +677,7 @@ function TopResultsDock({ search, rowsById, embeddings, activeRows, onBuildIndex
               {(embeddings.message || 'Build the vector index before showing similarity scores.')}
             </p>
             <button type="button" className="primary-action" onClick={onBuildIndex}>
-              {indexInfo.indexed ? 'Resume vector index' : 'Build vector index'}
+              {buildLabel}
             </button>
           </div>
         </div>

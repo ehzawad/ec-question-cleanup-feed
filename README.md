@@ -19,9 +19,9 @@ Run the Apple Silicon semantic backend in a second terminal before opening the U
 npm run semantic:server
 ```
 
-The frontend connects to `http://127.0.0.1:8765` automatically. The Python backend is required; the browser E5 fallback was removed because E5-large can consume enough Chrome memory to make the tab unresponsive.
+The frontend connects to `http://127.0.0.1:8765` automatically. If the page opens before the backend is running, it keeps retrying and configures the loaded CSV rows as soon as the backend comes online. The Python backend is required; the browser E5 fallback was removed because E5-large can consume enough Chrome memory to make the tab unresponsive.
 
-After the page loads, click **Build vector index**. The button creates cached vectors for all active rows. Search and row-click similarity stay disabled until the vector count reaches `62,978 / 62,978`, so the Top-10 panel only shows full-dataset results.
+After the page loads, click **Build vector index** if the vector count is not complete. The button creates cached vectors for all active rows, and a fully cached index returns to ready without loading another E5 model instance. Search and row-click similarity stay disabled until the vector count reaches `62,978 / 62,978`, so the Top-10 panel only shows full-dataset results.
 
 If port `5173` is busy:
 
@@ -46,7 +46,7 @@ npm run build
 
 - Python backend: `intfloat/multilingual-e5-large-instruct`, loaded by SentenceTransformers/PyTorch on MPS when available.
 - The old browser fallback used an ONNX model in Chrome and has been removed to avoid duplicate model loads and memory pressure.
-- Backend row vectors are cached under `.semantic-cache/row_vectors.npz`; closing the browser tab does not delete that cache.
+- Backend row vectors are cached under `.semantic-cache/row_vectors.npz`; closing the browser tab does not delete that cache. The cache path is repo-relative unless `SEMANTIC_CACHE_DIR` overrides it.
 
 ## Cleanup Features
 

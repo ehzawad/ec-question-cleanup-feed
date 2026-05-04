@@ -6,6 +6,7 @@ let onErrorRef = null;
 let backendModePromise = null;
 let routeQueue = Promise.resolve();
 let statusPollTimer = null;
+let backendRetryTimer = null;
 let latestBackendStatus = null;
 
 const BACKEND_URL = localStorage.getItem('semanticBackendUrl') || 'http://127.0.0.1:8765';
@@ -84,22 +85,47 @@ function ensureBackendMode() {
   if (!backendModePromise) {
     backendModePromise = fetchJson('/health', { method: 'GET' })
       .then((payload) => {
-        latestBackendStatus = payload;
-        onMessageRef?.({
-          ...payload,
-          type: 'status',
-          status: payload.status || 'ready',
-          message: `Apple Silicon semantic backend connected (${payload.engine || 'python-mps-faiss'})`
-        });
-        startStatusPolling();
+        handleBackendConnected(payload);
         return true;
       })
       .catch(() => {
         backendModePromise = null;
+        startBackendRetryPolling();
         return false;
       });
   }
   return backendModePromise;
+}
+
+function handleBackendConnected(payload) {
+  latestBackendStatus = payload;
+  stopBackendRetryPolling();
+  onMessageRef?.({
+    ...payload,
+    type: 'status',
+    status: payload.status || 'ready',
+    message: `Apple Silicon semantic backend connected (${payload.engine || 'python-mps-faiss'})`
+  });
+  startStatusPolling();
+}
+
+function startBackendRetryPolling() {
+  if (backendRetryTimer) return;
+  backendRetryTimer = window.setInterval(async () => {
+    try {
+      const payload = await fetchJson('/health', { method: 'GET' });
+      backendModePromise = Promise.resolve(true);
+      handleBackendConnected(payload);
+    } catch {
+      backendModePromise = null;
+    }
+  }, 1500);
+}
+
+function stopBackendRetryPolling() {
+  if (!backendRetryTimer) return;
+  window.clearInterval(backendRetryTimer);
+  backendRetryTimer = null;
 }
 
 async function postBackend(message) {
@@ -179,7 +205,14 @@ function startStatusPolling() {
       const payload = await fetchJson('/status', { method: 'GET' });
       latestBackendStatus = payload;
       onMessageRef?.({ ...payload, type: 'status' });
-      if (payload.status === 'ready' || payload.status === 'error') {
+      if (
+        payload.status === 'error'
+        || (
+          payload.status === 'ready'
+          && Number(payload.total || 0) > 0
+          && Number(payload.indexed || 0) >= Number(payload.total || 0)
+        )
+      ) {
         window.clearInterval(statusPollTimer);
         statusPollTimer = null;
       }
