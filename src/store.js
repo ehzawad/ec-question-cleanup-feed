@@ -408,7 +408,7 @@ export const useCleanupStore = create(immer((set, get) => ({
     if (!cleanTag || !cleanQuestion) return null;
     let added = null;
     set((state) => {
-      const originalIndex = Math.max(-1, ...state.rows.allIds.map((rowId) => state.rows.byId[rowId]?.originalIndex ?? -1)) + 1;
+      const originalIndex = nextOriginalIndex(state.rows);
       const row = {
         rowId: `added-${Date.now()}-${Math.round(Math.random() * 100000)}`,
         originalIndex,
@@ -803,10 +803,29 @@ function insertAfter(array, rowId, afterRowId = null) {
 
 function insertByAllOrder(array, allIds, rowId) {
   if (array.includes(rowId)) return;
-  const rowOrder = allIds.indexOf(rowId);
-  const insertAt = array.findIndex((id) => allIds.indexOf(id) > rowOrder);
+  const orderById = new Map(allIds.map((id, index) => [id, index]));
+  const rowOrder = orderById.get(rowId);
+  if (rowOrder == null) {
+    array.push(rowId);
+    return;
+  }
+  const lastOrder = orderById.get(array[array.length - 1]);
+  if (lastOrder == null || lastOrder < rowOrder) {
+    array.push(rowId);
+    return;
+  }
+  const insertAt = array.findIndex((id) => (orderById.get(id) ?? Number.POSITIVE_INFINITY) > rowOrder);
   if (insertAt >= 0) array.splice(insertAt, 0, rowId);
   else array.push(rowId);
+}
+
+function nextOriginalIndex(rowsState) {
+  let maxIndex = -1;
+  for (const rowId of rowsState.allIds) {
+    const index = Number(rowsState.byId[rowId]?.originalIndex ?? -1);
+    if (index > maxIndex) maxIndex = index;
+  }
+  return maxIndex + 1;
 }
 
 function yieldToBrowser() {

@@ -279,6 +279,7 @@ function App() {
   function handleEdit(rowId, patch) {
     const changed = editRow(rowId, patch);
     if (!changed) return;
+    setSaveNotice(`Edited row ${changed.rowId}`);
     markSemanticSyncPending();
     postUpsertRows([rowToWorkerDoc(changed)], useCleanupStore.getState().workerRunId());
     queueSemanticRefresh('edit');
@@ -303,6 +304,7 @@ function App() {
   function handleAdd(payload) {
     const row = addRow(payload);
     if (!row) return;
+    setSaveNotice(`Added row ${row.rowId}`);
     markSemanticSyncPending();
     postUpsertRows([rowToWorkerDoc(row)], useCleanupStore.getState().workerRunId());
     queueSemanticRefresh('add');
@@ -814,6 +816,7 @@ function FeedCard({
 }
 
 function AddComposer({ composer, onChange, onCancel, onAdd }) {
+  const canAdd = composer.tag.trim() && composer.question.trim();
   return (
     <section className="add-composer">
       <div className="section-head">
@@ -840,7 +843,7 @@ function AddComposer({ composer, onChange, onCancel, onAdd }) {
           placeholder="Example user question"
         />
       </label>
-      <button type="button" onClick={onAdd}>Add to working set</button>
+      <button type="button" onClick={onAdd} disabled={!canAdd}>Add to working set</button>
     </section>
   );
 }
