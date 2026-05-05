@@ -59,7 +59,7 @@ The backend uses:
 
 The Python backend is mandatory. The previous Transformers.js browser fallback was removed because loading E5-large inside Chrome could create duplicate model instances and severe memory pressure on long cleanup sessions.
 
-The frontend owns backend reconnection. If the user opens the page before `npm run semantic:server`, the UI shows a backend error, polls `/health`, and then reruns the CSV-to-backend configure/reuse handshake after the backend is reachable. A `ready 0 / 0` backend response is not treated as a complete index when the frontend has loaded rows.
+The frontend owns backend reconnection. If the user opens the page before `npm run semantic:server`, the UI shows a backend error, polls `/health`, and then reruns the CSV-to-backend configure/reuse handshake after the backend is reachable. A stale `localStorage.semanticBackendUrl` is cleared when the default backend at `127.0.0.1:8765` is reachable. A `ready 0 / 0` backend response is not treated as a complete index when the frontend has loaded rows.
 
 ## Build Vector Index Flow
 

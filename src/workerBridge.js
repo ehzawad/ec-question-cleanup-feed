@@ -9,7 +9,8 @@ let statusPollTimer = null;
 let backendRetryTimer = null;
 let latestBackendStatus = null;
 
-const BACKEND_URL = localStorage.getItem('semanticBackendUrl') || 'http://127.0.0.1:8765';
+const DEFAULT_BACKEND_URL = 'http://127.0.0.1:8765';
+let backendUrl = localStorage.getItem('semanticBackendUrl') || DEFAULT_BACKEND_URL;
 
 export function initWorkerBridge(onMessage, onError) {
   onMessageRef = onMessage;
@@ -83,7 +84,7 @@ function ensureBackendMode() {
   // Health is checked once per page load. Users can override the endpoint with
   // localStorage.semanticBackendUrl for experiments or a non-default port.
   if (!backendModePromise) {
-    backendModePromise = fetchJson('/health', { method: 'GET' })
+    backendModePromise = probeBackendHealth()
       .then((payload) => {
         handleBackendConnected(payload);
         return true;
@@ -113,7 +114,7 @@ function startBackendRetryPolling() {
   if (backendRetryTimer) return;
   backendRetryTimer = window.setInterval(async () => {
     try {
-      const payload = await fetchJson('/health', { method: 'GET' });
+      const payload = await probeBackendHealth();
       backendModePromise = Promise.resolve(true);
       handleBackendConnected(payload);
     } catch {
@@ -224,8 +225,20 @@ function startStatusPolling() {
   }, 1000);
 }
 
-async function fetchJson(path, { method, body } = {}) {
-  const response = await fetch(`${BACKEND_URL}${path}`, {
+async function probeBackendHealth() {
+  try {
+    return await fetchJson('/health', { method: 'GET' });
+  } catch (error) {
+    if (backendUrl === DEFAULT_BACKEND_URL) throw error;
+    const payload = await fetchJson('/health', { method: 'GET' }, DEFAULT_BACKEND_URL);
+    backendUrl = DEFAULT_BACKEND_URL;
+    localStorage.removeItem('semanticBackendUrl');
+    return payload;
+  }
+}
+
+async function fetchJson(path, { method, body } = {}, baseUrl = backendUrl) {
+  const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers: body ? { 'content-type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined

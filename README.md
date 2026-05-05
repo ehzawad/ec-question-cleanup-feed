@@ -19,7 +19,7 @@ Run the Apple Silicon semantic backend in a second terminal before opening the U
 npm run semantic:server
 ```
 
-The frontend connects to `http://127.0.0.1:8765` automatically. If the page opens before the backend is running, it keeps retrying and configures the loaded CSV rows as soon as the backend comes online. The Python backend is required; the browser E5 fallback was removed because E5-large can consume enough Chrome memory to make the tab unresponsive.
+The frontend connects to `http://127.0.0.1:8765` automatically. If the page opens before the backend is running, it keeps retrying and configures the loaded CSV rows as soon as the backend comes online. If an old `localStorage.semanticBackendUrl` points at a dead backend, the app falls back to `127.0.0.1:8765` and clears that stale setting. The Python backend is required; the browser E5 fallback was removed because E5-large can consume enough Chrome memory to make the tab unresponsive.
 
 After the page loads, click **Build vector index** if the vector count is not complete. The button creates cached vectors for all active rows, and a fully cached index returns to ready without loading another E5 model instance. Search and row-click similarity stay disabled until the vector count reaches `62,978 / 62,978`, so the Top-10 panel only shows full-dataset results.
 
