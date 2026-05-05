@@ -13,6 +13,8 @@ The main surface has:
 - A virtualized feed with one card per CSV row.
 - The tag name and question text visible on every row card.
 - All rows for the same tag remain together because the source CSV order is preserved.
+- Feed-local question search for narrowing the visible row list without running E5.
+- Tag-first ordering that moves one selected tag group to the top while preserving the rest of the feed.
 - Per-row actions for edit, delete, and add.
 - Checkbox selection for cleanup operations, not semantic search.
 - A centered search area for semantic queries.
@@ -22,6 +24,8 @@ The main surface has:
 ## Semantic Search Contract
 
 Top-10 results are full-index-only.
+
+Feed-local search is not semantic search. It only filters the visible feed by literal question text. The tag-first selector is also browse-only; it does not create similarity scores or change the Top-10 query.
 
 The UI must not show semantic scores while the user is merely browsing rows. Scores appear only after:
 

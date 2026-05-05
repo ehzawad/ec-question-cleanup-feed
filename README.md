@@ -2,7 +2,7 @@
 
 Single-screen cleanup workbench for Bangladesh Election Commission chatbot rows from `question_tag.csv`.
 
-The app renders one virtualized feed card per CSV row. Rows can be edited, deleted, restored, bulk-deleted, added, saved as CSV, and bookmarked with named rollback points. Semantic search uses multilingual E5 embeddings; clicking a row copies that row's question into the same Top-10 search path as a typed query.
+The app renders one virtualized feed card per CSV row. Rows can be searched by question text, reordered with a tag-first selector, edited, deleted, restored, bulk-deleted, added, saved as CSV, and bookmarked with named rollback points. Semantic search uses multilingual E5 embeddings; clicking a row copies that row's question into the same Top-10 search path as a typed query.
 
 ## Run
 
@@ -40,7 +40,9 @@ npm run build
 - `question_tag.csv` is the active source file.
 - It uses `question,tag` columns.
 - The feed keeps row-level data, so repeated tags remain separate cards.
-- Search is global over active rows.
+- The feed-local search filters visible rows by question text only. This is separate from E5 semantic search.
+- The tag-first selector keeps the full feed available but moves rows from the selected tag to the top.
+- Semantic search is global over active rows.
 
 ## Semantic Models
 
@@ -51,6 +53,8 @@ npm run build
 ## Cleanup Features
 
 - Scrollable virtualized feed for the full `question_tag.csv` dataset.
+- Feed-local question search and tag-first ordering for faster row browsing without running semantic search.
+- A single copyable CSV row chip on each original row card.
 - Semantic result dock that shows Top-10 only after the full vector index is complete and after a typed query or row click.
 - Per-row edit, delete, restore, click-to-inspect, and add-sibling actions. Row-click inspection becomes active only after the full vector index is ready.
 - Checkbox plus shift-click range selection for bulk delete.

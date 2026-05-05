@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import './styles.css';
@@ -27,6 +27,8 @@ function App() {
   const [pendingScrollRowId, setPendingScrollRowId] = useState(null);
   const [pendingSemanticRefresh, setPendingSemanticRefresh] = useState(null);
   const [queryDraft, setQueryDraft] = useState('');
+  const [feedQuery, setFeedQuery] = useState('');
+  const [priorityTag, setPriorityTag] = useState('');
   const [snapshotName, setSnapshotName] = useState('');
   const [saveNotice, setSaveNotice] = useState('');
   const [bootMessage, setBootMessage] = useState('Loading question CSV...');
@@ -173,7 +175,40 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [clearSearch, redo, undo]);
 
-  const visibleIds = showRemoved ? allIds : activeIds;
+  const baseVisibleIds = showRemoved ? allIds : activeIds;
+  const deferredFeedQuery = useDeferredValue(feedQuery);
+  const feedQueryValue = deferredFeedQuery.trim().toLocaleLowerCase();
+  const tagOptions = useMemo(() => {
+    const counts = new Map();
+    for (const rowId of baseVisibleIds) {
+      const tag = rowsById[rowId]?.tag;
+      if (!tag) continue;
+      counts.set(tag, (counts.get(tag) || 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([tag, count]) => ({ tag, count }));
+  }, [baseVisibleIds, rowsById]);
+  const visibleIds = useMemo(() => {
+    let ids = baseVisibleIds;
+    if (feedQueryValue) {
+      ids = ids.filter((rowId) => {
+        const question = rowsById[rowId]?.question || '';
+        return question.toLocaleLowerCase().includes(feedQueryValue);
+      });
+    }
+    if (!priorityTag) return ids;
+    const matchingTagIds = [];
+    const remainingIds = [];
+    for (const rowId of ids) {
+      if (rowsById[rowId]?.tag === priorityTag) {
+        matchingTagIds.push(rowId);
+      } else {
+        remainingIds.push(rowId);
+      }
+    }
+    return [...matchingTagIds, ...remainingIds];
+  }, [baseVisibleIds, feedQueryValue, priorityTag, rowsById]);
 
   const rowVirtualizer = useVirtualizer({
     count: visibleIds.length,
@@ -191,6 +226,17 @@ function App() {
         size: 156
       }));
   const virtualHeight = Math.max(rowVirtualizer.getTotalSize(), visibleIds.length * 156);
+
+  useEffect(() => {
+    if (!priorityTag) return;
+    if (tagOptions.some((option) => option.tag === priorityTag)) return;
+    setPriorityTag('');
+  }, [priorityTag, tagOptions]);
+
+  useEffect(() => {
+    parentRef.current?.scrollTo({ top: 0 });
+    rowVirtualizer.scrollToIndex(0);
+  }, [feedQueryValue, priorityTag, showRemoved]);
 
   useEffect(() => {
     if (!pendingScrollRowId) return;
@@ -389,6 +435,7 @@ function App() {
     const row = rowsById[rowId];
     if (!row) return;
     if (row.status === 'removed' && !showRemoved) setShowRemoved(true);
+    if (feedQueryValue && !visibleIds.includes(rowId)) setFeedQuery('');
     setPendingScrollRowId(rowId);
   }
 
@@ -533,16 +580,52 @@ function App() {
       <section className="feed-shell">
         <div className="feed-count">
           <div className="feed-count-main">
-            <span>Showing {visibleIds.length.toLocaleString()} rows in CSV order</span>
-            {search.mode === 'text' && search.textQuery ? <span>Query: {search.textQuery}</span> : null}
+            <span>
+              Showing {visibleIds.length.toLocaleString()}
+              {visibleIds.length !== baseVisibleIds.length ? ` of ${baseVisibleIds.length.toLocaleString()}` : ''}
+              {' '}rows
+            </span>
+            {priorityTag ? <span>Tag first: {priorityTag}</span> : <span>CSV order</span>}
+            {feedQueryValue ? <span>Feed search: {deferredFeedQuery.trim()}</span> : null}
+            {search.mode === 'text' && search.textQuery ? <span>Semantic query: {search.textQuery}</span> : null}
           </div>
-          <button
-            className="feed-add-button"
-            type="button"
-            onClick={() => setComposer({ open: true, afterRowId: null, tag: '', question: '' })}
-          >
-            Add row
-          </button>
+          <div className="feed-controls">
+            <label className="feed-filter-box">
+              <span>Find question in feed</span>
+              <input
+                type="search"
+                value={feedQuery}
+                placeholder="Search visible question text..."
+                onChange={(event) => setFeedQuery(event.target.value)}
+              />
+            </label>
+            <label className="feed-tag-select">
+              <span>Tag first</span>
+              <select value={priorityTag} onChange={(event) => setPriorityTag(event.target.value)}>
+                <option value="">All tags in CSV order</option>
+                {tagOptions.map(({ tag, count }) => (
+                  <option key={tag} value={tag}>
+                    {tag} ({count.toLocaleString()})
+                  </option>
+                ))}
+              </select>
+            </label>
+            {feedQuery || priorityTag ? (
+              <button type="button" onClick={() => {
+                setFeedQuery('');
+                setPriorityTag('');
+              }}>
+                Reset feed
+              </button>
+            ) : null}
+            <button
+              className="feed-add-button"
+              type="button"
+              onClick={() => setComposer({ open: true, afterRowId: null, tag: '', question: '' })}
+            >
+              Add row
+            </button>
+          </div>
         </div>
         <div ref={parentRef} className="feed-scroll" role="list" aria-label="Question tag cleanup feed">
           <div
@@ -798,6 +881,12 @@ function FeedCard({
     onInspect();
   }
 
+  function copyRowPosition(event) {
+    event.stopPropagation();
+    const value = row.isAdded ? row.rowId : String(row.originalIndex + 1);
+    navigator.clipboard?.writeText(value);
+  }
+
   return (
     <article
       role="listitem"
@@ -830,8 +919,13 @@ function FeedCard({
         }}
       >
         <div className="card-meta">
-          <span>{row.rowId}</span>
-          <span>#{row.originalIndex + 1}</span>
+          <span
+            className="copy-chip"
+            onClick={copyRowPosition}
+            title={row.isAdded ? 'Copy generated row id' : 'Copy source CSV row number'}
+          >
+            {row.isAdded ? row.rowId : `CSV row ${(row.originalIndex + 1).toLocaleString()}`}
+          </span>
           {row.isAdded ? <span>added</span> : null}
           {row.status === 'removed' ? <span>removed</span> : null}
           {isTopResult ? <span>in top 10</span> : null}

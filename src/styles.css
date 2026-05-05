@@ -640,22 +640,20 @@ button:hover {
 }
 
 .feed-shell {
-  flex: 0 0 clamp(420px, 52vh, 760px);
+  flex: 1 1 520px;
   display: grid;
   grid-template-rows: auto 1fr;
-  height: clamp(420px, 52vh, 760px);
-  min-height: 0;
+  min-height: clamp(520px, 56vh, 860px);
   overflow: hidden;
 }
 
 .feed-count {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 38px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  min-height: 84px;
   border-bottom: 1px solid #e2e8f0;
-  padding: 8px 14px;
+  padding: 10px 14px;
   color: #64748b;
   font-size: 12px;
 }
@@ -670,6 +668,39 @@ button:hover {
 
 .feed-count span {
   color: #475569;
+}
+
+.feed-controls {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.3fr) minmax(260px, 1fr) auto auto;
+  align-items: end;
+  gap: 8px;
+  width: 100%;
+}
+
+.feed-filter-box,
+.feed-tag-select {
+  display: grid;
+  gap: 5px;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.feed-filter-box span,
+.feed-tag-select span {
+  color: #64748b;
+}
+
+.feed-filter-box input,
+.feed-tag-select select {
+  height: 36px;
+  font-size: 12px;
+}
+
+.feed-controls button {
+  min-height: 36px;
+  white-space: nowrap;
 }
 
 .feed-add-button {
@@ -760,11 +791,23 @@ button:hover {
 }
 
 .card-meta span {
+  min-height: auto;
+  border: 0;
   border-radius: 999px;
   padding: 3px 7px;
   background: #f1f5f9;
   color: #64748b;
   font-size: 11px;
+}
+
+.copy-chip {
+  cursor: copy;
+  user-select: text;
+}
+
+.copy-chip:hover {
+  background: #e0f2fe;
+  color: #075985;
 }
 
 .tag-line {
@@ -884,6 +927,15 @@ button:hover {
     height: 70vh;
     min-height: 420px;
   }
+
+  .feed-count {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .feed-controls {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  }
 }
 
 @media (max-width: 720px) {
@@ -906,5 +958,13 @@ button:hover {
 
   .result-list li {
     grid-template-columns: 1fr auto;
+  }
+
+  .feed-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .feed-add-button {
+    width: 100%;
   }
 }
