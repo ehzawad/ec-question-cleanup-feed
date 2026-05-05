@@ -27,7 +27,7 @@ If that venv needs to be rebuilt, install the pinned CUDA runtime dependencies w
 /home/synesis/venv-election-commission/bin/python -m pip install -r requirements-linux-cuda.txt
 ```
 
-The frontend connects to `http://127.0.0.1:8765` automatically. If the page opens before the backend is running, it keeps retrying and configures the loaded CSV rows as soon as the backend comes online. If an old `localStorage.semanticBackendUrl` points at a dead backend, the app falls back to `127.0.0.1:8765` and clears that stale setting. The Python backend is required; the browser E5 fallback was removed because E5-large can consume enough Chrome memory to make the tab unresponsive.
+The frontend connects to the semantic backend automatically. On localhost it uses `http://127.0.0.1:8765`; when opened from a LAN IP such as `http://172.16.213.6:5173`, it uses `http://172.16.213.6:8765`. If an old `localStorage.semanticBackendUrl` points at a dead backend, the app falls back to that page-host default and clears the stale setting. The Python backend is required; the browser E5 fallback was removed because E5-large can consume enough Chrome memory to make the tab unresponsive.
 
 After the page loads, click **Build vector index** if the vector count is not complete. The button creates cached vectors for all active rows, and a fully cached index returns to ready without loading another E5 model instance. Search and row-click similarity stay disabled until the vector count reaches `62,978 / 62,978`, so the Top-10 panel only shows full-dataset results.
 
@@ -36,6 +36,29 @@ If port `5173` is busy:
 ```bash
 npm run dev -- --port 5174
 ```
+
+## LAN Sharing
+
+Start the frontend and backend on LAN-visible interfaces:
+
+```bash
+npm run dev:lan
+npm run semantic:server:lan
+```
+
+Find your machine's LAN IP:
+
+```bash
+hostname -I
+```
+
+Then a colleague on the same network can open:
+
+```text
+http://<your-lan-ip>:5173/
+```
+
+The backend allows browser origins from localhost and private LAN addresses by default. If your machine firewall blocks access, allow inbound TCP ports `5173` and `8765`.
 
 ## Build
 

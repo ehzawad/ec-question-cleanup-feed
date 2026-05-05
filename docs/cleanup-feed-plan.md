@@ -46,6 +46,8 @@ npm run semantic:server
 
 The npm script uses `/home/synesis/venv-election-commission/bin/python` unless `SEMANTIC_PYTHON` is set. It defaults to `SEMANTIC_DEVICE=cuda` for SentenceTransformers/PyTorch and `SEMANTIC_FAISS_DEVICE=gpu` for FAISS.
 
+For LAN sharing, `npm run semantic:server:lan` sets `SEMANTIC_HOST=0.0.0.0`. The backend CORS default accepts localhost and private LAN browser origins. Override `SEMANTIC_CORS_ORIGINS` or `SEMANTIC_CORS_ORIGIN_REGEX` only when serving from a nonstandard host.
+
 It serves `http://127.0.0.1:8765` and exposes:
 
 - `GET /health`
@@ -66,7 +68,7 @@ The backend uses:
 
 The Python backend is mandatory. The previous Transformers.js browser fallback was removed because loading E5-large inside Chrome could create duplicate model instances and severe memory pressure on long cleanup sessions.
 
-The frontend owns backend reconnection. If the user opens the page before `npm run semantic:server`, the UI shows a backend error, polls `/health`, and then reruns the CSV-to-backend configure/reuse handshake after the backend is reachable. A stale `localStorage.semanticBackendUrl` is cleared when the default backend at `127.0.0.1:8765` is reachable. A `ready 0 / 0` backend response is not treated as a complete index when the frontend has loaded rows.
+The frontend owns backend reconnection. If the user opens the page before `npm run semantic:server`, the UI shows a backend error, polls `/health`, and then reruns the CSV-to-backend configure/reuse handshake after the backend is reachable. The default backend URL is derived from the page host: localhost uses `127.0.0.1:8765`, and LAN pages use the same LAN host on port `8765`. A stale `localStorage.semanticBackendUrl` is cleared when that default backend is reachable. A `ready 0 / 0` backend response is not treated as a complete index when the frontend has loaded rows.
 
 ## Build Vector Index Flow
 
@@ -131,6 +133,7 @@ Before committing:
 - `npm run build`
 - `/home/synesis/venv-election-commission/bin/python -m py_compile backend/semantic_server.py`
 - `/home/synesis/venv-election-commission/bin/python -c "import torch, faiss; print(torch.cuda.is_available(), faiss.get_num_gpus())"` should report CUDA available and at least one FAISS GPU on the target machine.
+- For LAN sharing, run `npm run dev:lan` and `npm run semantic:server:lan`, then open `http://<lan-ip>:5173/` from another browser on the same network.
 - Open the app in a browser and confirm the feed renders.
 - Load the page while `/health` is unavailable, then restore backend access and confirm the UI recovers to the cached vector count.
 - Click **Build vector index** when vectors are incomplete and confirm backend `/status` moves into `indexing`.

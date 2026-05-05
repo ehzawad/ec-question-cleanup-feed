@@ -48,6 +48,18 @@ PORT = int(os.environ.get("SEMANTIC_PORT", "8765"))
 BATCH_SIZE = int(os.environ.get("SEMANTIC_BATCH_SIZE", "64"))
 MAX_SEQ_LENGTH = int(os.environ.get("SEMANTIC_MAX_SEQ_LENGTH", "256"))
 SAVE_EVERY = int(os.environ.get("SEMANTIC_SAVE_EVERY", "1024"))
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        "SEMANTIC_CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]
+CORS_ORIGIN_REGEX = os.environ.get(
+    "SEMANTIC_CORS_ORIGIN_REGEX",
+    r"https?://(localhost|127\.0\.0\.1|0\.0\.0\.0|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|[A-Za-z0-9-]+\.local):\d+",
+)
 E5_INSTRUCTION = (
     "You are an expert in matching Bangladeshi National Identity Card (NID) and voter registration queries. "
     "Your task is to identify the most semantically relevant question from the provided document, considering "
@@ -572,8 +584,8 @@ state = SemanticState()
 app = FastAPI(title="EC Cleanup Semantic Backend")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    allow_origins=CORS_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_methods=["*"],
     allow_headers=["*"],
 )

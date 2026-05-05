@@ -9,8 +9,9 @@ let statusPollTimer = null;
 let backendRetryTimer = null;
 let latestBackendStatus = null;
 
-const DEFAULT_BACKEND_URL = 'http://127.0.0.1:8765';
-let backendUrl = localStorage.getItem('semanticBackendUrl') || DEFAULT_BACKEND_URL;
+const BACKEND_PORT = '8765';
+const DEFAULT_BACKEND_URL = resolveDefaultBackendUrl();
+let backendUrl = normalizeBackendUrl(localStorage.getItem('semanticBackendUrl')) || DEFAULT_BACKEND_URL;
 
 export function initWorkerBridge(onMessage, onError) {
   onMessageRef = onMessage;
@@ -260,4 +261,20 @@ function canReuseBackendPayload(payload, expectedRows) {
   const total = Number(payload?.total || payload?.evidenceCount || 0);
   if (!expectedRows || !total || total !== expectedRows) return false;
   return payload.status !== 'idle';
+}
+
+function resolveDefaultBackendUrl() {
+  const configured = normalizeBackendUrl(import.meta.env?.VITE_SEMANTIC_BACKEND_URL);
+  if (configured) return configured;
+
+  const hostname = window.location.hostname;
+  if (!hostname || hostname === 'localhost' || hostname === '127.0.0.1') {
+    return `http://127.0.0.1:${BACKEND_PORT}`;
+  }
+  return `http://${hostname}:${BACKEND_PORT}`;
+}
+
+function normalizeBackendUrl(value) {
+  const url = String(value || '').trim();
+  return url.endsWith('/') ? url.slice(0, -1) : url;
 }
