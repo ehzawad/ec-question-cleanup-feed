@@ -1,4 +1,4 @@
-# EC Question Cleanup Feed
+# Question Cleanup Feed
 
 Single-screen cleanup workbench for Bangladesh Election Commission chatbot rows from `question_tag.csv`.
 
