@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "semantic:server": "uv run --python 3.13 backend/semantic_server.py"
+    "semantic:server": "SEMANTIC_PYTHON=${SEMANTIC_PYTHON:-/home/synesis/venv-election-commission/bin/python}; SEMANTIC_DEVICE=${SEMANTIC_DEVICE:-cuda} SEMANTIC_FAISS_DEVICE=${SEMANTIC_FAISS_DEVICE:-gpu} \"$SEMANTIC_PYTHON\" backend/semantic_server.py"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.12",

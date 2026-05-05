@@ -1,13 +1,14 @@
 # /// script
-# requires-python = ">=3.13,<3.14"
+# requires-python = ">=3.12,<3.14"
 # dependencies = [
 #   "fastapi>=0.115.0",
 #   "uvicorn[standard]>=0.30.0",
 #   "torch>=2.6.0",
 #   "sentence-transformers>=3.4.0",
 #   "transformers>=4.48.0",
-#   "faiss-cpu>=1.9.0",
-#   "numpy>=2.0.0",
+#   "faiss-gpu-cu12>=1.8.0.2; platform_system == 'Linux'",
+#   "faiss-cpu>=1.9.0; platform_system == 'Darwin'",
+#   "numpy>=1.26.0,<3",
 #   "safetensors>=0.4.5",
 #   "tokenizers>=0.21.0",
 # ]
@@ -17,14 +18,16 @@
 
 The browser E5 fallback has been removed; this server is the single semantic
 engine. It runs the PyTorch-compatible `intfloat/multilingual-e5-large-instruct`
-model through SentenceTransformers, uses MPS on Apple Silicon when available,
-and keeps the FAISS nearest-neighbor index in CPU memory.
+model through SentenceTransformers, prefers CUDA when available, falls back to
+MPS on Apple Silicon or CPU, and uses FAISS GPU search when the installed FAISS
+package exposes a CUDA backend.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -52,22 +55,78 @@ E5_INSTRUCTION = (
 )
 
 
+def mps_available() -> bool:
+    """Return whether PyTorch can use Apple Silicon MPS on this machine."""
+    return hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+
+
 def select_device() -> str:
     """Choose the fastest available PyTorch device with an env override."""
     requested = os.environ.get("SEMANTIC_DEVICE", "auto").strip().lower()
     if requested in {"cpu", "mps", "cuda"}:
-        if requested == "mps" and not torch.backends.mps.is_available():
+        if requested == "mps" and not mps_available():
             print("[semantic] SEMANTIC_DEVICE=mps requested but MPS is unavailable; using CPU")
             return "cpu"
         if requested == "cuda" and not torch.cuda.is_available():
             print("[semantic] SEMANTIC_DEVICE=cuda requested but CUDA is unavailable; using CPU")
             return "cpu"
         return requested
+    if requested != "auto":
+        print(f"[semantic] SEMANTIC_DEVICE={requested} is invalid; using auto")
     if torch.cuda.is_available():
         return "cuda"
-    if torch.backends.mps.is_available():
+    if mps_available():
         return "mps"
     return "cpu"
+
+
+def faiss_gpu_count() -> int:
+    """Return the number of FAISS-visible GPUs without assuming GPU FAISS."""
+    get_num_gpus = getattr(faiss, "get_num_gpus", None)
+    if not callable(get_num_gpus):
+        return 0
+    try:
+        return int(get_num_gpus())
+    except Exception as exc:
+        print(f"[semantic] FAISS GPU probe failed: {exc}", flush=True)
+        return 0
+
+
+def faiss_gpu_available() -> bool:
+    """Return whether this FAISS install can build GPU indices."""
+    return (
+        faiss_gpu_count() > 0
+        and hasattr(faiss, "StandardGpuResources")
+        and hasattr(faiss, "index_cpu_to_gpu")
+    )
+
+
+def select_faiss_device() -> str:
+    """Choose FAISS GPU when available, with an env override for CPU fallback."""
+    requested = os.environ.get("SEMANTIC_FAISS_DEVICE", "auto").strip().lower()
+    if requested in {"cpu", "gpu", "cuda"}:
+        if requested == "cpu":
+            return "cpu"
+        if faiss_gpu_available():
+            return "gpu"
+        print(f"[semantic] SEMANTIC_FAISS_DEVICE={requested} requested but FAISS GPU is unavailable; using CPU")
+        return "cpu"
+    if requested != "auto":
+        print(f"[semantic] SEMANTIC_FAISS_DEVICE={requested} is invalid; using auto")
+    return "gpu" if faiss_gpu_available() else "cpu"
+
+
+def runtime_summary() -> dict[str, Any]:
+    """Expose the Python/Torch/FAISS runtime so the UI and logs show the real backend."""
+    return {
+        "pythonExecutable": sys.executable,
+        "pythonVersion": sys.version.split()[0],
+        "torchVersion": torch.__version__,
+        "torchCudaVersion": torch.version.cuda,
+        "torchCudaAvailable": torch.cuda.is_available(),
+        "faissVersion": getattr(faiss, "__version__", "unknown"),
+        "faissGpuCount": faiss_gpu_count(),
+    }
 
 
 def format_document(text: str) -> str:
@@ -92,6 +151,8 @@ class SemanticState:
         self.index_id_to_row_id: dict[int, str] = {}
         self.model: SentenceTransformer | None = None
         self.device = select_device()
+        self.faiss_device = select_faiss_device()
+        self.faiss_gpu_resources: Any | None = None
         self.status = "idle"
         self.phase = "idle"
         self.phase_done = 0
@@ -224,8 +285,10 @@ class SemanticState:
             "cacheHits": self.cache_hits,
             "cacheWrites": self.cache_writes,
             "cachePurges": self.cache_purges,
-            "engine": f"python-{self.device}-faiss",
+            "engine": f"python-{self.device}-faiss-{self.faiss_device}",
+            "faissDevice": self.faiss_device,
             "error": self.error,
+            **runtime_summary(),
         }
 
     def configured_payload_locked(self) -> dict[str, Any]:
@@ -332,10 +395,25 @@ class SemanticState:
                 self.model_progress = 0
                 self.message = f"Loading {MODEL_ID} on {self.device.upper()}"
             print(f"[semantic] loading {MODEL_ID} on {self.device.upper()}", flush=True)
-            model = SentenceTransformer(MODEL_ID, device=self.device)
+            try:
+                model = SentenceTransformer(MODEL_ID, device=self.device)
+                actual_device = self.device
+            except (torch.cuda.OutOfMemoryError, RuntimeError) as exc:
+                allow_fallback = os.environ.get("SEMANTIC_ALLOW_CPU_FALLBACK", "").lower() in {"1", "true", "yes"}
+                is_cuda_oom = self.device == "cuda" and "out of memory" in str(exc).lower()
+                if not (allow_fallback and is_cuda_oom):
+                    raise
+                print("[semantic] CUDA OOM while loading model; falling back to CPU", flush=True)
+                try:
+                    torch.cuda.empty_cache()
+                except Exception:
+                    pass
+                model = SentenceTransformer(MODEL_ID, device="cpu")
+                actual_device = "cpu"
             model.max_seq_length = MAX_SEQ_LENGTH
             with self.lock:
                 self.model = model
+                self.device = actual_device
                 self.model_progress = 100
                 self.message = f"Loaded {MODEL_ID} on {self.device.upper()}"
 
@@ -457,8 +535,22 @@ class SemanticState:
         np.savez(tmp_path, row_ids=row_ids, fingerprints=fingerprints, vectors=vectors)
         tmp_path.replace(self.cache_path)
 
+    def _make_faiss_index(self, dim: int) -> faiss.IndexIDMap2:
+        """Create a FAISS ID-mapped inner-product index on GPU when available."""
+        base = faiss.IndexFlatIP(dim)
+        if self.faiss_device == "gpu":
+            try:
+                self.faiss_gpu_resources = faiss.StandardGpuResources()
+                gpu_base = faiss.index_cpu_to_gpu(self.faiss_gpu_resources, 0, base)
+                return faiss.IndexIDMap2(gpu_base)
+            except Exception as exc:
+                print(f"[semantic] failed to create FAISS GPU index; falling back to CPU: {exc}", flush=True)
+                self.faiss_device = "cpu"
+                self.faiss_gpu_resources = None
+        return faiss.IndexIDMap2(base)
+
     def _rebuild_index_locked(self) -> None:
-        """Rebuild the CPU FAISS inner-product index from normalized vectors."""
+        """Rebuild the FAISS inner-product index from normalized vectors."""
         active_row_ids = [
             row_id for row_id, doc in self.docs.items()
             if row_id in self.vectors and self.vector_fingerprints.get(row_id) == doc.get("fingerprint")
@@ -469,9 +561,7 @@ class SemanticState:
             return
         matrix = np.stack([self.vectors[row_id] for row_id in active_row_ids]).astype("float32")
         dim = int(matrix.shape[1])
-        # FAISS CPU search is already cheap for ~63k normalized 1024d vectors.
-        base = faiss.IndexFlatIP(dim)
-        index = faiss.IndexIDMap2(base)
+        index = self._make_faiss_index(dim)
         ids = np.arange(len(active_row_ids), dtype=np.int64)
         index.add_with_ids(matrix, ids)
         self.index = index
@@ -537,8 +627,9 @@ if __name__ == "__main__":
             "port": PORT,
             "model": MODEL_ID,
             "device": state.device,
+            "faissDevice": state.faiss_device,
             "cache": str(CACHE_DIR),
-            "python": "3.13",
+            **runtime_summary(),
         }),
         flush=True,
     )

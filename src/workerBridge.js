@@ -1,4 +1,4 @@
-// Routes all semantic work to the local Python/MPS backend. The browser E5
+// Routes all semantic work to the local Python backend. The browser E5
 // fallback was intentionally removed because E5-large in Chrome can consume
 // enough memory to make the cleanup tab unresponsive.
 let onMessageRef = null;
@@ -105,7 +105,7 @@ function handleBackendConnected(payload) {
     ...payload,
     type: 'status',
     status: payload.status || 'ready',
-    message: `Apple Silicon semantic backend connected (${payload.engine || 'python-mps-faiss'})`
+    message: `Semantic backend connected (${payload.engine || 'python-faiss'})`
   });
   startStatusPolling();
 }

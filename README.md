@@ -13,10 +13,18 @@ npm run dev -- --port 5173
 
 Open `http://localhost:5173/`.
 
-Run the Apple Silicon semantic backend in a second terminal before opening the UI:
+Run the CUDA semantic backend in a second terminal before opening the UI:
 
 ```bash
 npm run semantic:server
+```
+
+The npm script launches `/home/synesis/venv-election-commission/bin/python` by default and requests `SEMANTIC_DEVICE=cuda` plus `SEMANTIC_FAISS_DEVICE=gpu`. Override `SEMANTIC_PYTHON`, `SEMANTIC_DEVICE`, or `SEMANTIC_FAISS_DEVICE` only when you need a different runtime.
+
+If that venv needs to be rebuilt, install the pinned CUDA runtime dependencies with:
+
+```bash
+/home/synesis/venv-election-commission/bin/python -m pip install -r requirements-linux-cuda.txt
 ```
 
 The frontend connects to `http://127.0.0.1:8765` automatically. If the page opens before the backend is running, it keeps retrying and configures the loaded CSV rows as soon as the backend comes online. If an old `localStorage.semanticBackendUrl` points at a dead backend, the app falls back to `127.0.0.1:8765` and clears that stale setting. The Python backend is required; the browser E5 fallback was removed because E5-large can consume enough Chrome memory to make the tab unresponsive.
@@ -46,7 +54,8 @@ npm run build
 
 ## Semantic Models
 
-- Python backend: `intfloat/multilingual-e5-large-instruct`, loaded by SentenceTransformers/PyTorch on MPS when available.
+- Python backend: `intfloat/multilingual-e5-large-instruct`, loaded by SentenceTransformers/PyTorch on CUDA by default.
+- FAISS backend: GPU `IndexFlatIP` wrapped in `IndexIDMap2` when `faiss-gpu-cu12` exposes a CUDA GPU. It falls back to CPU FAISS only if GPU FAISS is unavailable or explicitly disabled with `SEMANTIC_FAISS_DEVICE=cpu`.
 - The old browser fallback used an ONNX model in Chrome and has been removed to avoid duplicate model loads and memory pressure.
 - Backend row vectors are cached under `.semantic-cache/row_vectors.npz`; closing the browser tab does not delete that cache. The cache path is repo-relative unless `SEMANTIC_CACHE_DIR` overrides it.
 
@@ -61,7 +70,7 @@ npm run build
 - Undo/redo with a persisted operation log. Cleanup edits are autosaved in the browser.
 - Named rollback points that restore the dataset to a prior cleanup step.
 - Save clean CSV and removed-row CSV downloads.
-- Python 3.13 Apple Silicon backend with PyTorch MPS embeddings and FAISS Top-10 search.
+- Python semantic backend using `/home/synesis/venv-election-commission/bin/python`, CUDA PyTorch embeddings, and FAISS GPU Top-10 search.
 - CSV loading and parsing run asynchronously so the feed can paint without blocking the tab.
 
 ## Dev Logging
@@ -73,3 +82,4 @@ curl http://127.0.0.1:8765/status
 ```
 
 The status payload reports the current phase, indexed row count, cache hits, backend engine, and any model-load errors.
+It also reports `pythonExecutable`, PyTorch CUDA availability, FAISS version, `faissDevice`, and `faissGpuCount` so you can confirm the GPU runtime is active.

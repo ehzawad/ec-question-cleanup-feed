@@ -38,11 +38,13 @@ Row click replaces the old "pivot" wording. A clicked row copies that row's ques
 
 ## Semantic Backend
 
-The preferred engine is the local Python 3.13 backend:
+The preferred engine is the local CUDA Python backend:
 
 ```bash
 npm run semantic:server
 ```
+
+The npm script uses `/home/synesis/venv-election-commission/bin/python` unless `SEMANTIC_PYTHON` is set. It defaults to `SEMANTIC_DEVICE=cuda` for SentenceTransformers/PyTorch and `SEMANTIC_FAISS_DEVICE=gpu` for FAISS.
 
 It serves `http://127.0.0.1:8765` and exposes:
 
@@ -57,8 +59,9 @@ It serves `http://127.0.0.1:8765` and exposes:
 The backend uses:
 
 - `intfloat/multilingual-e5-large-instruct` for SentenceTransformers/PyTorch.
-- Apple Silicon MPS for embedding when available.
-- FAISS CPU `IndexFlatIP` over normalized vectors for Top-10 retrieval.
+- CUDA for embedding by default, with MPS/CPU fallback available through `SEMANTIC_DEVICE`.
+- FAISS GPU `IndexFlatIP` over normalized vectors for Top-10 retrieval when `faiss-gpu-cu12` exposes a GPU.
+- CPU FAISS fallback through `SEMANTIC_FAISS_DEVICE=cpu` or when GPU FAISS is unavailable.
 - `.semantic-cache/row_vectors.npz` for restartable vector cache.
 
 The Python backend is mandatory. The previous Transformers.js browser fallback was removed because loading E5-large inside Chrome could create duplicate model instances and severe memory pressure on long cleanup sessions.
@@ -126,7 +129,8 @@ The backend build worker checks for missing or stale row vectors before loading 
 Before committing:
 
 - `npm run build`
-- `uv run --python 3.13 python -m py_compile backend/semantic_server.py`
+- `/home/synesis/venv-election-commission/bin/python -m py_compile backend/semantic_server.py`
+- `/home/synesis/venv-election-commission/bin/python -c "import torch, faiss; print(torch.cuda.is_available(), faiss.get_num_gpus())"` should report CUDA available and at least one FAISS GPU on the target machine.
 - Open the app in a browser and confirm the feed renders.
 - Load the page while `/health` is unavailable, then restore backend access and confirm the UI recovers to the cached vector count.
 - Click **Build vector index** when vectors are incomplete and confirm backend `/status` moves into `indexing`.
@@ -141,6 +145,6 @@ Before committing:
 ## Known Constraints
 
 - Full Top-10 correctness requires all active vectors to be ready.
-- FAISS is in-memory and rebuilt after corpus changes.
+- FAISS is in-memory and rebuilt after corpus changes. The default is FAISS GPU, with CPU fallback available.
 - `.semantic-cache/` is local runtime data and must stay ignored by git.
 - Search is global over active rows.

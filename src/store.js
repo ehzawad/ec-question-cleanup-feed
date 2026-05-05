@@ -41,7 +41,7 @@ const initialState = {
     error: ''
   },
   embeddings: {
-    // Progress from the mandatory Python/MPS backend.
+    // Progress from the mandatory Python semantic backend.
     indexed: 0,
     total: 0,
     status: 'idle',
@@ -50,7 +50,7 @@ const initialState = {
     phaseTotal: 0,
     modelProgress: 0,
     message: '',
-    engine: 'python-mps-faiss',
+    engine: 'python-faiss',
     cacheHits: 0,
     cacheWrites: 0,
     cachePurges: 0,
