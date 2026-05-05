@@ -213,6 +213,7 @@ function App() {
       : `${pendingExportCount.toLocaleString()} changes autosaved locally`;
   const indexInfo = semanticIndexInfo(embeddings, activeRows);
   const canRunSemantic = indexInfo.ready;
+  const isSearching = search.status === 'querying';
   const topResultIds = useMemo(
     () => new Set(search.results.map((result) => result.rowId)),
     [search.results]
@@ -448,10 +449,10 @@ function App() {
             <button
               type="button"
               onClick={() => runTextSearch(queryDraft)}
-              disabled={!canRunSemantic || !queryDraft.trim()}
+              disabled={!canRunSemantic || !queryDraft.trim() || isSearching}
               title={canRunSemantic ? 'Search the full vector index' : 'Build the full vector index before searching'}
             >
-              Search
+              {isSearching ? 'Searching...' : 'Search'}
             </button>
             <button type="button" onClick={clearSearch}>Clear</button>
           </div>
@@ -630,6 +631,7 @@ function ProgressLines({ indexInfo, compact = false }) {
 function TopResultsDock({ search, rowsById, embeddings, activeRows, onBuildIndex, onSelectResult, onRemove }) {
   const indexInfo = semanticIndexInfo(embeddings, activeRows);
   const isReady = indexInfo.ready;
+  const isSearching = search.status === 'querying';
   const buildBusy = !isReady && ['indexing', 'loading'].includes(embeddings.status);
   const buildLabel = buildBusy
     ? embeddings.phase === 'loading'
@@ -665,7 +667,7 @@ function TopResultsDock({ search, rowsById, embeddings, activeRows, onBuildIndex
           <span className={`status-pill ${isReady ? 'ok' : 'dirty'}`}>
             {isReady ? 'Full index ready' : `${indexInfo.indexed.toLocaleString()} / ${indexInfo.total.toLocaleString()} vectors`}
           </span>
-          {search.status === 'querying' ? <span className="status-pill">Computing Top-10</span> : null}
+          {isSearching ? <span className="status-pill busy">Computing Top-10</span> : null}
         </div>
       </div>
 
@@ -685,7 +687,20 @@ function TopResultsDock({ search, rowsById, embeddings, activeRows, onBuildIndex
 
       {search.error ? <p className="warning-text">{search.error}</p> : null}
 
-      {isReady && hasIntent && results.length ? (
+      {isReady && isSearching ? (
+        <div className="search-progress" role="status" aria-live="polite">
+          <div className="indeterminate-track"><span /></div>
+          <p>Computing Top-10 from the vector index...</p>
+          <div className="result-skeletons" aria-hidden="true">
+            {Array.from({ length: 6 }, (_, index) => (
+              <div key={index} className="result-skeleton">
+                <span />
+                <span />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : isReady && hasIntent && results.length ? (
         <ol className="result-list" role="listbox">
           {results.map((result, index) => (
             <li key={`${result.rowId}-${index}`} className={result.row.status === 'removed' ? 'removed' : ''}>

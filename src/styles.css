@@ -133,6 +133,13 @@ button:disabled {
   color: #be123c;
 }
 
+.status-pill.busy {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 800;
+}
+
 .search-panel {
   display: grid;
   grid-template-columns: 1fr;
@@ -428,6 +435,68 @@ button:hover {
   scrollbar-gutter: stable;
 }
 
+.search-progress {
+  display: grid;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.search-progress p {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.indeterminate-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.indeterminate-track span {
+  display: block;
+  width: 38%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #14b8a6, #60a5fa);
+  animation: search-progress-slide 900ms ease-in-out infinite;
+}
+
+.result-skeletons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.result-skeleton {
+  display: grid;
+  gap: 7px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.result-skeleton span {
+  display: block;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e2e8f0, #f8fafc, #e2e8f0);
+  background-size: 220% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.result-skeleton span:first-child {
+  width: 50%;
+}
+
+.result-skeleton span:last-child {
+  width: 82%;
+}
+
 .result-list li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(42px, auto) minmax(74px, auto);
@@ -438,6 +507,26 @@ button:hover {
   border-radius: 8px;
   padding: 7px;
   background: #ffffff;
+}
+
+@keyframes search-progress-slide {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  100% {
+    transform: translateX(270%);
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+
+  100% {
+    background-position: -120% 0;
+  }
 }
 
 .result-list li.removed {
@@ -773,7 +862,8 @@ button:hover {
     align-items: stretch;
   }
 
-  .result-list {
+  .result-list,
+  .result-skeletons {
     grid-template-columns: 1fr;
   }
 
